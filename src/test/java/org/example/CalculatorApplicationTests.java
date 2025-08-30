@@ -11,3 +11,4 @@ class CalculatorApplicationTests {
         // This test will pass if the Spring application context loads successfully
     }
 }
+

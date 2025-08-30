@@ -30,6 +30,8 @@
             width: 100%;
             max-width: 500px;
             border: 1px solid rgba(255, 255, 255, 0.2);
+            position: relative;
+            z-index: 1;
         }
         
         .logo {
@@ -61,6 +63,7 @@
         .form-group {
             margin-bottom: 25px;
             position: relative;
+            z-index: 5;
         }
         
         label {
@@ -82,6 +85,9 @@
             background: #f8f9fa;
             transition: all 0.3s ease;
             color: #2c3e50;
+            position: relative;
+            z-index: 10;
+            pointer-events: auto;
         }
         
         input:focus, select:focus {
@@ -115,6 +121,17 @@
         
         button:active {
             transform: translateY(-1px);
+        }
+        
+        button:disabled {
+            opacity: 0.7;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        button:disabled:hover {
+            transform: none;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
         }
         
         .result {
@@ -157,6 +174,7 @@
             height: 100%;
             overflow: hidden;
             z-index: -1;
+            pointer-events: none;
         }
         
         .shape {
@@ -164,6 +182,7 @@
             background: rgba(255, 255, 255, 0.1);
             border-radius: 50%;
             animation: float 6s ease-in-out infinite;
+            pointer-events: none;
         }
         
         .shape:nth-child(1) {
@@ -257,6 +276,7 @@
             animation-fill-mode: both;
             opacity: 0;
             transform: translateY(30px) scale(0.9);
+            pointer-events: auto;
         }
         
         .form-group:nth-child(1) { animation-delay: 0.2s; }
@@ -275,6 +295,12 @@
                 opacity: 1;
                 transform: translateY(0) scale(1);
             }
+        }
+        
+        /* Ensure form groups are interactive after animation */
+        .form-group.animated {
+            pointer-events: auto;
+            z-index: 5;
         }
         
         .logo {
@@ -410,6 +436,7 @@
         .form-group:hover {
             transform: translateY(-2px);
             transition: transform 0.3s ease;
+            z-index: 15;
         }
         
         .form-group:hover label {
@@ -530,6 +557,18 @@
         .form-group select:focus {
             transform: translateY(-3px) scale(1.02);
             box-shadow: 0 8px 25px rgba(102, 126, 234, 0.2);
+            z-index: 20;
+        }
+        
+        /* Critical fix for input clickability */
+        input, select, button {
+            pointer-events: auto !important;
+            position: relative;
+            z-index: 100;
+        }
+        
+        .form-group {
+            pointer-events: auto !important;
         }
         
         /* Loading animation for button */
@@ -622,15 +661,50 @@
         </form>
 
         <div id="result" class="result" style="display: none;"></div>
+        
+
     </div>
 
     <script>
         document.getElementById('calculatorForm').addEventListener('submit', async function(e) {
             e.preventDefault();
             
-            const firstNumber = parseFloat(document.getElementById('firstNumber').value);
-            const secondNumber = parseFloat(document.getElementById('secondNumber').value);
-            const operation = document.getElementById('operation').value;
+            // Get form elements
+            const firstNumberInput = document.getElementById('firstNumber');
+            const secondNumberInput = document.getElementById('secondNumber');
+            const operationSelect = document.getElementById('operation');
+            const submitButton = document.querySelector('button[type="submit"]');
+            
+            // Validate inputs
+            if (!firstNumberInput.value || !secondNumberInput.value || !operationSelect.value) {
+                displayResult({
+                    message: 'Please fill in all fields',
+                    result: null
+                }, false, '', '', '');
+                return;
+            }
+            
+            const firstNumber = parseFloat(firstNumberInput.value);
+            const secondNumber = parseFloat(secondNumberInput.value);
+            const operation = operationSelect.value;
+            
+            // Additional validation
+            if (isNaN(firstNumber) || isNaN(secondNumber)) {
+                displayResult({
+                    message: 'Please enter valid numbers',
+                    result: null
+                }, false, operation, firstNumberInput.value, secondNumberInput.value);
+                return;
+            }
+            
+            // Check for division by zero
+            if (operation === 'divide' && secondNumber === 0) {
+                displayResult({
+                    message: 'Cannot divide by zero',
+                    result: null
+                }, false, operation, firstNumber, secondNumber);
+                return;
+            }
             
             const requestData = {
                 firstNumber: firstNumber,
@@ -638,7 +712,19 @@
                 operation: operation
             };
             
+            // Clear previous result
+            const resultDiv = document.getElementById('result');
+            resultDiv.style.display = 'none';
+            
+
+            
             try {
+                console.log('Sending request:', requestData); // Debug log
+                
+                // Show loading state
+                submitButton.disabled = true;
+                submitButton.textContent = '🔄 Calculating...';
+                
                 const response = await fetch('/api/calculator/calculate', {
                     method: 'POST',
                     headers: {
@@ -647,34 +733,59 @@
                     body: JSON.stringify(requestData)
                 });
                 
+                console.log('Response status:', response.status); // Debug log
+                
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.message || `HTTP ${response.status}: ${response.statusText}`);
+                }
+                
                 const result = await response.json();
-                displayResult(result, response.ok);
+                console.log('Parsed result:', result); // Debug log
+                
+                displayResult(result, true, operation, firstNumber, secondNumber);
                 
             } catch (error) {
+                console.error('Error:', error); // Debug log
                 displayResult({
-                    message: 'Network error: ' + error.message,
+                    message: 'Error: ' + error.message,
                     result: null
-                }, false);
+                }, false, operation, firstNumber, secondNumber);
+            } finally {
+                // Reset button state
+                submitButton.disabled = false;
+                submitButton.textContent = '🚀 Calculate Result';
             }
         });
         
-        function displayResult(data, isSuccess) {
+        function displayResult(data, isSuccess, operation, firstNumber, secondNumber) {
             const resultDiv = document.getElementById('result');
             resultDiv.style.display = 'block';
             
-            if (isSuccess && data.result !== null) {
+            console.log('API Response:', data); // Debug log
+            console.log('Operation:', operation); // Debug log
+            console.log('Numbers:', firstNumber, secondNumber); // Debug log
+            
+            if (isSuccess && data.result !== null && data.result !== undefined) {
                 resultDiv.className = 'result success';
+                
+                // Format the result with proper decimal places
+                const formattedResult = typeof data.result === 'number' ? 
+                    (data.result % 1 === 0 ? data.result : data.result.toFixed(4)) : 
+                    data.result;
+                
                 resultDiv.innerHTML = `
-                    <h3>🎯 Calculation Complete</h3>
-                    <p><strong>Result:</strong> ${data.result}</p>
+                    <h3>🎯 Result</h3>
+                    <p style="font-size: 48px; font-weight: bold; color: #667eea; margin: 20px 0;">${formattedResult}</p>
                 `;
                 // Add particle effect for success
                 createParticles();
             } else {
                 resultDiv.className = 'result error';
+                const errorMessage = data.message || data.error || 'Unknown error occurred';
                 resultDiv.innerHTML = `
                     <h3>⚠️ Calculation Error</h3>
-                    <p><strong>Error:</strong> ${data.message}</p>
+                    <p><strong>Error:</strong> ${errorMessage}</p>
                 `;
             }
         }
@@ -698,6 +809,18 @@
         
         // Add interactive animations
         document.addEventListener('DOMContentLoaded', function() {
+            // Ensure form elements are immediately clickable
+            const inputs = document.querySelectorAll('input, select');
+            inputs.forEach(input => {
+                input.style.pointerEvents = 'auto';
+                input.style.zIndex = '100';
+            });
+            
+            const formGroups = document.querySelectorAll('.form-group');
+            formGroups.forEach(group => {
+                group.style.pointerEvents = 'auto';
+                group.style.zIndex = '5';
+            });
             // Add ripple effect to button
             const button = document.querySelector('button');
             button.addEventListener('click', function(e) {
@@ -720,7 +843,6 @@
             });
             
             // Add floating effect to form groups on scroll
-            const formGroups = document.querySelectorAll('.form-group');
             const observerOptions = {
                 threshold: 0.1,
                 rootMargin: '0px 0px -50px 0px'
@@ -730,6 +852,10 @@
                 entries.forEach(entry => {
                     if (entry.isIntersecting) {
                         entry.target.style.animation = 'fadeInUp 0.8s cubic-bezier(0.68, -0.55, 0.265, 1.55) forwards';
+                        // Add class after animation completes
+                        setTimeout(() => {
+                            entry.target.classList.add('animated');
+                        }, 800);
                     }
                 });
             }, observerOptions);
@@ -752,6 +878,19 @@
             
             setTimeout(typeWriter, 500);
         });
+        
+        // Helper function to get operation display text
+        function getOperationText(operation) {
+            const operationMap = {
+                'add': '+',
+                'subtract': '-',
+                'multiply': '×',
+                'divide': '÷',
+                'power': '^',
+                'modulo': '%'
+            };
+            return operationMap[operation] || operation;
+        }
         
         // Add particle effect on successful calculation
         function createParticles() {

@@ -71,3 +71,4 @@ public class CalculatorResponse {
         this.secondNumber = secondNumber;
     }
 }
+
